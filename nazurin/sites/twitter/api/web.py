@@ -130,9 +130,9 @@ class WebAPI(BaseAPI):
         # 1.1 Original
         # api = "https://twitter.com/i/api/graphql/1oIoGPTOJN2mSjbbXlQifA/TweetDetail"
         # 1.2 Latest web API
-        # api = "https://twitter.com/i/api/graphql/q94uRCEn65LZThakYcPT6g/TweetDetail"
+        api = "https://twitter.com/i/api/graphql/q94uRCEn65LZThakYcPT6g/TweetDetail"
         # 1.3 From Fritter
-        api = "https://twitter.com/i/api/graphql/3XDB26fBve-MmjHaWTUZxA/TweetDetail"
+        # api = "https://twitter.com/i/api/graphql/3XDB26fBve-MmjHaWTUZxA/TweetDetail"
 
         variables = WebAPI.variables
         variables.update({"focalTweetId": tweet_id})
