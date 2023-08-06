@@ -26,8 +26,12 @@ class Headers:
 class WebAPI(BaseAPI):
     auth_token = AUTH_TOKEN
     headers = {
-        "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH"
-        "5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+        # 1. Original, from web API
+        # "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH"
+        # "5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+        # 2. From Fritter
+        "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAAGHtAgAAAAAA%2Bx7ILXNILCqk"
+        "SGIzy6faIHZ9s3Q%3DQy97w6SIrzE7lQwPJEYQBsArEE2fC25caFwRBvAGi456G09vGR",
         "Origin": "https://twitter.com",
         "Referer": "https://twitter.com",
         Headers.GUEST_TOKEN: "",
@@ -35,6 +39,7 @@ class WebAPI(BaseAPI):
         "x-twitter-active-user": "yes",
     }
     variables = {
+        "referrer": "profile",
         "with_rux_injections": False,
         "includePromotedContent": False,
         "withCommunity": True,
@@ -48,8 +53,10 @@ class WebAPI(BaseAPI):
     }
     features = {
         "blue_business_profile_image_shape_enabled": False,
+        "rweb_lists_timeline_redesign_enabled": True,
         "responsive_web_graphql_exclude_directive_enabled": True,
         "verified_phone_label_enabled": False,
+        "creator_subscriptions_tweet_preview_api_enabled": True,
         "responsive_web_graphql_timeline_navigation_enabled": True,
         "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
         "tweetypie_unmention_optimization_enabled": True,
@@ -58,15 +65,17 @@ class WebAPI(BaseAPI):
         "graphql_is_translatable_rweb_tweet_is_translatable_enabled": False,
         "view_counts_everywhere_api_enabled": True,
         "longform_notetweets_consumption_enabled": True,
+        "responsive_web_twitter_article_tweet_consumption_enabled": False,
         "tweet_awards_web_tipping_enabled": False,
-        "freedom_of_speech_not_reach_fetch_enabled": False,
+        "freedom_of_speech_not_reach_fetch_enabled": True,
         "standardized_nudges_misinfo": True,
-        (
-            "tweet_with_visibility_results_" "prefer_gql_limited_actions_policy_enabled"
-        ): False,
+        "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True,
         "interactive_text_enabled": True,
         "responsive_web_text_conversations_enabled": False,
         "longform_notetweets_richtext_consumption_enabled": False,
+        "longform_notetweets_rich_text_read_enabled": True,
+        "longform_notetweets_inline_media_enabled": True,
+        "responsive_web_media_download_video_enabled": False,
         "responsive_web_enhance_cards_enabled": False,
     }
 
@@ -81,7 +90,12 @@ class WebAPI(BaseAPI):
 
     async def fetch(self, status_id: int) -> Illust:
         """Fetch & return tweet images and information."""
+
+        # 1. TweetDetail
         tweet = await self.tweet_detail(status_id)
+        # 2. TweetResultByRestId
+        # tweet = await self.tweet_result_by_rest_id(status_id)
+
         if "extended_entities" not in tweet:
             raise NazurinError("No photo found.")
         media = tweet["extended_entities"]["media"]
@@ -112,7 +126,14 @@ class WebAPI(BaseAPI):
 
     async def tweet_detail(self, tweet_id: str):
         logger.info("Fetching tweet {} from web API", tweet_id)
-        api = "https://twitter.com/i/api/graphql/1oIoGPTOJN2mSjbbXlQifA/TweetDetail"
+
+        # 1.1 Original
+        # api = "https://twitter.com/i/api/graphql/1oIoGPTOJN2mSjbbXlQifA/TweetDetail"
+        # 1.2 Latest web API
+        # api = "https://twitter.com/i/api/graphql/q94uRCEn65LZThakYcPT6g/TweetDetail"
+        # 1.3 From Fritter
+        api = "https://twitter.com/i/api/graphql/3XDB26fBve-MmjHaWTUZxA/TweetDetail"
+
         variables = WebAPI.variables
         variables.update({"focalTweetId": tweet_id})
         params = {
@@ -123,6 +144,25 @@ class WebAPI(BaseAPI):
         response = await self._request("GET", api, params=params)
         try:
             return self._process_response(response, tweet_id)
+        except KeyError as error:
+            msg = "Failed to parse response:"
+            logger.error("{} {}", msg, error)
+            logger.info("{}", response)
+            raise NazurinError(f"{msg} {error}") from error
+
+    async def tweet_result_by_rest_id(self, tweet_id: str):
+        logger.info("Fetching tweet {} from web API", tweet_id)
+        api = "https://twitter.com/i/api/graphql/0hWvDhmW8YQ-S_ib3azIrw/TweetResultByRestId"
+        variables = WebAPI.variables
+        variables.update({"tweetId": tweet_id})
+        params = {
+            "variables": json.dumps(variables),
+            "features": json.dumps(WebAPI.features),
+        }
+        await self._require_auth()
+        response = await self._request("GET", api, params=params)
+        try:
+            return WebAPI.normalize_tweet(response["data"]["tweetResult"]["result"])
         except KeyError as error:
             msg = "Failed to parse response:"
             logger.error("{} {}", msg, error)
@@ -240,7 +280,8 @@ class WebAPI(BaseAPI):
         # the result is not a direct tweet type, the real tweet is nested.
         if typename == "TweetWithVisibilityResults" or tweet.get("tweet"):
             tweet = tweet["tweet"]
-
+        with open("tweet.json", "w", encoding="utf-8") as f:
+            json.dump(tweet, f, ensure_ascii=False, indent=4)
         tweet = WebAPI.normalize_tweet(tweet)
         # Return original tweet if it's a retweet
         retweet_original = tweet.get("retweeted_status_result")
